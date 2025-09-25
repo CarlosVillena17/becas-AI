@@ -1,7 +1,9 @@
 streamlit>=1.36
 python-dotenv
+langchain>=0.2
+langchain-core>=0.2
 langchain-openai>=0.1.7
-langchain-core>=0.2.0
+langchain-community>=0.2
 pypdf
 docx2txt
 python-pptx
