@@ -1,5 +1,5 @@
 import os
-from dotenv import load_dotenv
+# from dotenv import load_dotenv  # Local opcional: no se usa en Streamlit Cloud
 import streamlit as st
 from langchain_openai import ChatOpenAI
 from langchain_core.prompts import ChatPromptTemplate
@@ -9,56 +9,25 @@ from langchain.document_loaders import (
     PyPDFLoader,
     TextLoader,
     Docx2txtLoader,
-    UnstructuredPowerPointLoader
 )
+from pptx import Presentation
 from datetime import datetime
 
-
-# 🔧 CONFIGURACIÓN ESPECIAL PARA VERCEL
-if "VERCEL" in os.environ:
-    # Solución para compatibilidad de SQLite en Vercel
-    try:
-        __import__('pysqlite3')
-        sys.modules['sqlite3'] = sys.modules.pop('pysqlite3')
-    except ImportError:
-        pass
-
-# Cargar variables de entorno
-load_dotenv()
-
-# Configurar API Key - PRIORIDAD: Secrets de Vercel > .env
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
-
-# Si no está en variables de entorno, mostrar error
+# =============== Configuración de credencial ===============
+# load_dotenv()  # Si corres local y tienes .env
+OPENAI_API_KEY = st.secrets.get("OPENAI_API_KEY") or os.getenv("OPENAI_API_KEY")
 if not OPENAI_API_KEY:
-    st.error("""
-    🔐 **CONFIGURACIÓN REQUERIDA - OPENAI_API_KEY**
-    
-    Para desplegar en Vercel necesitas configurar tu API Key:
-    
-    1. Ve a tu proyecto en Vercel Dashboard
-    2. Click en **Settings** → **Environment Variables**
-    3. Añade esta variable:
-       - Name: `OPENAI_API_KEY`
-       - Value: `tu-clave-real-de-openai`
-    4. Redeploy la aplicación
-    
-    ⚠️ **NO subas tu .env a GitHub** - usa siempre Environment Variables en Vercel
-    """)
+    st.error("Falta OPENAI_API_KEY en tus Secrets (Streamlit Cloud) o variable de entorno.")
     st.stop()
 
-if not OPENAI_API_KEY:
-    st.error("Falta OPENAI_API_KEY en tu archivo .env")
-    st.stop()
-
-# Configurar página
+# =============== Config página ===============
 st.set_page_config(
     page_title="Agente de Becas - Asistente Virtual",
     page_icon="🎓",
     layout="centered"
 )
 
-# Estilos CSS para burbujas de chat estilo WhatsApp
+# =============== Estilos ===============
 st.markdown("""
 <style>
     .chat-container {
@@ -78,6 +47,7 @@ st.markdown("""
         max-width: 70%;
         margin-left: auto;
         box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+        word-wrap: break-word;
     }
     .assistant-message {
         background-color: #ffffff;
@@ -88,6 +58,7 @@ st.markdown("""
         max-width: 70%;
         box-shadow: 0 2px 5px rgba(0,0,0,0.05);
         border: 1px solid #e0e0e0;
+        word-wrap: break-word;
     }
     .message-time {
         font-size: 0.7em;
@@ -122,20 +93,20 @@ st.markdown("""
 
 st.title("Agente de Becas - Asistente Virtual")
 st.markdown(
-    "¡Hola! Soy tu asistente especializado en becas para estudiantes peruanos. Pregúntame sobre becas nacionales, internacionales, requisitos, plazos, documentos, etc.")
+    "¡Hola! Soy tu asistente especializado en becas para estudiantes peruanos. "
+    "Pregúntame sobre becas nacionales, internacionales, requisitos, plazos, documentos, etc."
+)
 
-# Inicializar el historial del chat en la sesión
+# =============== Historial ===============
 if "messages" not in st.session_state:
     st.session_state.messages = [
         {"role": "assistant", "content": "¡Hola! ¿En qué puedo ayudarte hoy con respecto a becas?"}
     ]
 
-# Contenedor del chat con burbujas estilo WhatsApp
+# =============== Render del chat ===============
 st.markdown("<div class='chat-container'>", unsafe_allow_html=True)
-
 for msg in st.session_state.messages:
     timestamp = datetime.now().strftime("%H:%M")
-
     if msg["role"] == "user":
         st.markdown(f"""
         <div class='user-message'>
@@ -150,34 +121,24 @@ for msg in st.session_state.messages:
             <div class='message-time'>{timestamp}</div>
         </div>
         """, unsafe_allow_html=True)
-
 st.markdown("</div>", unsafe_allow_html=True)
 
-# Botones de control flotantes
+# =============== Botones flotantes ===============
 st.markdown("<div class='control-buttons'>", unsafe_allow_html=True)
 col1, col2 = st.columns(2)
-
 with col1:
     if st.button("🗑️ Limpiar chat", help="Eliminar toda la conversación"):
         st.session_state.messages = [
             {"role": "assistant", "content": "¡Hola! ¿En qué puedo ayudarte hoy con respecto a becas?"}
         ]
         st.rerun()
-
 with col2:
     if st.button("📥 Exportar chat", help="Descargar conversación completa"):
         if st.session_state.messages:
-            # Crear contenido para exportar
-            export_content = "CONVERSACIÓN - AGENTE DE BECAS\n"
-            export_content += "=" * 50 + "\n\n"
-
+            export_content = "CONVERSACIÓN - AGENTE DE BECAS\n" + "=" * 50 + "\n\n"
             for i, msg in enumerate(st.session_state.messages, 1):
                 role = "TÚ" if msg["role"] == "user" else "ASISTENTE"
-                export_content += f"{i}. {role}:\n"
-                export_content += f"{msg['content']}\n"
-                export_content += "-" * 30 + "\n\n"
-
-            # Crear botón de descarga
+                export_content += f"{i}. {role}:\n{msg['content']}\n" + "-" * 30 + "\n\n"
             st.download_button(
                 label="💾 Descargar conversación",
                 data=export_content,
@@ -185,10 +146,9 @@ with col2:
                 mime="text/plain",
                 use_container_width=True
             )
-
 st.markdown("</div>", unsafe_allow_html=True)
 
-# Sistema de prompt (mantener igual)
+# =============== Prompt del sistema ===============
 system_prompt = """
 Eres un **Agente de Becas Inteligente**, especializado en orientar a estudiantes peruanos sobre oportunidades educativas nacionales e internacionales.
 
@@ -216,25 +176,32 @@ Restricciones:
 - Mantén siempre un tono empático, orientador y profesional.
 """
 
-# Configurar el LLM
+# =============== LLM y cadena ===============
 llm = ChatOpenAI(
     model="gpt-4o",
     temperature=0.3,
     api_key=OPENAI_API_KEY,
 )
-
 prompt = ChatPromptTemplate.from_messages([
     ("system", system_prompt),
     ("human", "{pregunta}")
 ])
-
 parser = StrOutputParser()
 chain = prompt | llm | parser
 
+# =============== Carga de documentos ===============
+def load_pptx_text(path: str) -> str:
+    """Extrae texto de PPTX usando python-pptx (sin dependencias pesadas)."""
+    prs = Presentation(path)
+    parts = []
+    for slide in prs.slides:
+        for shape in slide.shapes:
+            if hasattr(shape, "text") and shape.text:
+                parts.append(shape.text)
+    return "\n".join(parts).strip()
 
-# Función para cargar y procesar archivos (mantener igual)
 def cargar_documento(archivo_subido):
-    """Carga y extrae texto de diferentes tipos de archivos"""
+    """Carga y extrae texto de PDF, TXT, DOCX y PPTX."""
     try:
         with tempfile.NamedTemporaryFile(delete=False, suffix=os.path.splitext(archivo_subido.name)[1]) as tmp_file:
             tmp_file.write(archivo_subido.getvalue())
@@ -244,42 +211,43 @@ def cargar_documento(archivo_subido):
 
         if extension == '.pdf':
             loader = PyPDFLoader(tmp_path)
+            documentos = loader.load()
+            texto_completo = "\n\n".join([doc.page_content for doc in documentos])
         elif extension == '.txt':
             loader = TextLoader(tmp_path, encoding='utf-8')
-        elif extension in ['.docx', '.doc']:
+            documentos = loader.load()
+            texto_completo = "\n\n".join([doc.page_content for doc in documentos])
+        elif extension in ['.docx']:
             loader = Docx2txtLoader(tmp_path)
-        elif extension in ['.pptx', '.ppt']:
-            loader = UnstructuredPowerPointLoader(tmp_path)
+            documentos = loader.load()
+            texto_completo = "\n\n".join([doc.page_content for doc in documentos])
+        elif extension in ['.pptx']:
+            texto_completo = load_pptx_text(tmp_path)
         else:
             os.unlink(tmp_path)
-            return None, f"❌ Formato no soportado: {extension}"
+            return None, f"❌ Formato no soportado: {extension}. Usa PDF, TXT, DOCX o PPTX."
 
-        documentos = loader.load()
-        texto_completo = "\n\n".join([doc.page_content for doc in documentos])
         os.unlink(tmp_path)
         return texto_completo, None
 
     except Exception as e:
         return None, f"❌ Error al procesar el archivo: {str(e)}"
 
-
-# Sección para subir archivos en sidebar (mantener igual)
+# =============== Sidebar: subir archivos ===============
 st.sidebar.header("Subir Documentos")
 st.sidebar.markdown("Puedes subir documentos relacionados con becas para que los analice:")
 
 archivo_subido = st.sidebar.file_uploader(
     "Selecciona un archivo",
-    type=['pdf', 'txt', 'docx', 'doc', 'pptx', 'ppt'],
+    type=['pdf', 'txt', 'docx', 'pptx'],
     help="Formatos soportados: PDF, TXT, DOCX, PPTX"
 )
 
 documento_texto = None
-
 if archivo_subido is not None:
     with st.sidebar:
         with st.spinner(f"📊 Procesando {archivo_subido.name}..."):
             texto, error = cargar_documento(archivo_subido)
-
             if error:
                 st.error(error)
             else:
@@ -287,16 +255,23 @@ if archivo_subido is not None:
                 st.success(f"**{archivo_subido.name}** cargado")
                 st.info(f"Tamaño: {len(texto):,} caracteres")
 
-# Capturar entrada del usuario
+st.sidebar.markdown("---")
+st.sidebar.info("""
+**💡 Tipos de documentos útiles:**
+- Convocatorias de becas
+- Requisitos y bases
+- Formularios de postulación
+- Guías de aplicación
+- Cartas de motivación
+""")
+
+# =============== Input del usuario ===============
 user_input = st.chat_input("💭 Escribe tu pregunta sobre becas...")
 
 if user_input:
-    # Añadir mensaje del usuario al historial
     st.session_state.messages.append({"role": "user", "content": user_input})
 
-    # Preparar la pregunta incluyendo el documento si está disponible
     pregunta_final = user_input
-
     if documento_texto:
         texto_limitado = documento_texto[:8000]
         pregunta_final = f"""
@@ -307,7 +282,7 @@ Documento adjunto ({archivo_subido.name}):
 
 INSTRUCCIONES ESTRICTAS PARA EL ANÁLISIS:
 1. Analiza el documento SOLO si está relacionado con becas para programas académicos de pregrado, maestría o doctorado
-2. Si el documento trata sobre otros temas (cursos cortos, talleres, pasantías no académicas, etc.): 
+2. Si el documento trata sobre otros temas (cursos cortos, talleres, pasantías no académicas, etc.):
    - Detén el análisis inmediatamente
    - Responde: "El documento analizado no corresponde a becas para educación superior formal"
    - No proporciones ningún resumen o información del documento
@@ -320,7 +295,6 @@ INSTRUCCIONES ESTRICTAS PARA EL ANÁLISIS:
 Responde la pregunta del usuario basándote estrictamente en estas instrucciones.
 """
 
-    # Generar respuesta
     with st.spinner("Analizando tu consulta..."):
         try:
             respuesta = chain.invoke({"pregunta": pregunta_final})
@@ -330,14 +304,3 @@ Responde la pregunta del usuario basándote estrictamente en estas instrucciones
             error_msg = f"❌ Error: {str(e)}"
             st.session_state.messages.append({"role": "assistant", "content": error_msg})
             st.rerun()
-
-# Información adicional en el sidebar (mantener igual)
-st.sidebar.markdown("---")
-st.sidebar.info("""
-**💡 Tipos de documentos útiles:**
-- Convocatorias de becas
-- Requisitos y bases
-- Formularios de postulación
-- Guías de aplicación
-- Cartas de motivación
-""")
