@@ -5,7 +5,7 @@ from langchain_openai import ChatOpenAI
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import StrOutputParser
 import tempfile
-from langchain.document_loaders import (
+from langchain_community.document_loaders import (
     PyPDFLoader,
     TextLoader,
     Docx2txtLoader,
