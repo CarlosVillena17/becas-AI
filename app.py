@@ -12,13 +12,73 @@ from langchain_community.document_loaders import (
 )
 from pptx import Presentation
 from datetime import datetime
-
+from io import BytesIO
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
+from reportlab.lib.pagesizes import A4
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from reportlab.lib.enums import TA_LEFT
+from reportlab.lib import colors
+from xml.sax.saxutils import escape as xml_escape
 # =============== Configuración de credencial ===============
 # load_dotenv()  # Si corres local y tienes .env
 OPENAI_API_KEY = st.secrets.get("OPENAI_API_KEY") or os.getenv("OPENAI_API_KEY")
 if not OPENAI_API_KEY:
     st.error("Falta OPENAI_API_KEY en tus Secrets (Streamlit Cloud) o variable de entorno.")
     st.stop()
+
+def construir_pdf_conversacion(messages) -> bytes:
+    """
+    Genera un PDF (bytes) con el historial de chat.
+    Usa estilos simples y soporta saltos de línea básicos.
+    """
+    buffer = BytesIO()
+    doc = SimpleDocTemplate(
+        buffer,
+        pagesize=A4,
+        leftMargin=36, rightMargin=36,
+        topMargin=36, bottomMargin=36
+    )
+
+    styles = getSampleStyleSheet()
+    title_style = styles["Title"]
+    normal = styles["BodyText"]
+
+    # estilo para bloques (un poco más espaciado)
+    msg_style = ParagraphStyle(
+        "Msg",
+        parent=normal,
+        fontName="Helvetica",
+        fontSize=10.5,
+        leading=14,
+        alignment=TA_LEFT,
+        spaceAfter=8,
+        textColor=colors.black
+    )
+    role_style = ParagraphStyle(
+        "Role",
+        parent=normal,
+        fontName="Helvetica-Bold",
+        fontSize=11,
+        textColor=colors.HexColor("#0b5394"),
+        spaceAfter=2
+    )
+
+    story = []
+    story.append(Paragraph("CONVERSACIÓN – AGENTE DE BECAS", title_style))
+    story.append(Spacer(1, 12))
+
+    for i, msg in enumerate(messages, 1):
+        role = "TÚ" if msg["role"] == "user" else "ASISTENTE"
+        # escapamos HTML y convertimos saltos de línea a <br/>
+        body = xml_escape(msg["content"]).replace("\n", "<br/>")
+
+        story.append(Paragraph(f"{i}. {role}", role_style))
+        story.append(Paragraph(body, msg_style))
+
+    doc.build(story)
+    pdf_bytes = buffer.getvalue()
+    buffer.close()
+    return pdf_bytes
 
 # =============== Config página ===============
 st.set_page_config(
@@ -125,25 +185,39 @@ st.markdown("</div>", unsafe_allow_html=True)
 
 # =============== Botones flotantes ===============
 st.markdown("<div class='control-buttons'>", unsafe_allow_html=True)
-col1, col2 = st.columns(2)
+col1, col2, col3 = st.columns(3)
+
 with col1:
     if st.button("🗑️ Limpiar chat", help="Eliminar toda la conversación"):
         st.session_state.messages = [
             {"role": "assistant", "content": "¡Hola! ¿En qué puedo ayudarte hoy con respecto a becas?"}
         ]
         st.rerun()
+
 with col2:
-    if st.button("📥 Exportar chat", help="Descargar conversación completa"):
+    if st.button("📥 Exportar chat (TXT)", help="Descargar conversación como texto"):
         if st.session_state.messages:
             export_content = "CONVERSACIÓN - AGENTE DE BECAS\n" + "=" * 50 + "\n\n"
             for i, msg in enumerate(st.session_state.messages, 1):
                 role = "TÚ" if msg["role"] == "user" else "ASISTENTE"
                 export_content += f"{i}. {role}:\n{msg['content']}\n" + "-" * 30 + "\n\n"
             st.download_button(
-                label="💾 Descargar conversación",
+                label="💾 Descargar conversación (TXT)",
                 data=export_content,
                 file_name=f"conversacion_becas_{datetime.now().strftime('%Y%m%d_%H%M')}.txt",
                 mime="text/plain",
+                use_container_width=True
+            )
+
+with col3:
+    if st.button("📄 Exportar PDF", help="Descargar conversación en PDF"):
+        if st.session_state.messages:
+            pdf_bytes = construir_pdf_conversacion(st.session_state.messages)
+            st.download_button(
+                label="⬇️ Descargar PDF",
+                data=pdf_bytes,
+                file_name=f"conversacion_becas_{datetime.now().strftime('%Y%m%d_%H%M')}.pdf",
+                mime="application/pdf",
                 use_container_width=True
             )
 st.markdown("</div>", unsafe_allow_html=True)
