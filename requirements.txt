@@ -7,3 +7,4 @@ langchain-community>=0.2
 pypdf
 docx2txt
 python-pptx
+reportlab
