@@ -13,9 +13,40 @@ from langchain.document_loaders import (
 )
 from datetime import datetime
 
+
+# 🔧 CONFIGURACIÓN ESPECIAL PARA VERCEL
+if "VERCEL" in os.environ:
+    # Solución para compatibilidad de SQLite en Vercel
+    try:
+        __import__('pysqlite3')
+        sys.modules['sqlite3'] = sys.modules.pop('pysqlite3')
+    except ImportError:
+        pass
+
 # Cargar variables de entorno
 load_dotenv()
+
+# Configurar API Key - PRIORIDAD: Secrets de Vercel > .env
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+
+# Si no está en variables de entorno, mostrar error
+if not OPENAI_API_KEY:
+    st.error("""
+    🔐 **CONFIGURACIÓN REQUERIDA - OPENAI_API_KEY**
+    
+    Para desplegar en Vercel necesitas configurar tu API Key:
+    
+    1. Ve a tu proyecto en Vercel Dashboard
+    2. Click en **Settings** → **Environment Variables**
+    3. Añade esta variable:
+       - Name: `OPENAI_API_KEY`
+       - Value: `tu-clave-real-de-openai`
+    4. Redeploy la aplicación
+    
+    ⚠️ **NO subas tu .env a GitHub** - usa siempre Environment Variables en Vercel
+    """)
+    st.stop()
+
 if not OPENAI_API_KEY:
     st.error("Falta OPENAI_API_KEY en tu archivo .env")
     st.stop()
